@@ -10,34 +10,38 @@
 //local
 //#include <process_helper.h> 
 
+const char delim[4] = " \n";
+
 /*
  * Calls the system call specified by arg and returns 
  * the child process's status after it's run.
 */
-int runChildProc(char* arg)
+int runChildProc(char* cmd)
 {
 	int status;
 	int proc = fork();
 	if(proc == 0)
 	{
-		char* arg0 = strtok(arg, " \n");
-		char* file = (char*)malloc(20 * sizeof(char));
-		sprintf(file, "/bin/%s", arg0);
+		//Get the next token
+		char* arg0 = strtok(NULL, delim);
 
+		//Initialize while loop/args array
 		int i = 1;
 		char* args[11];
-		args[0] = arg0;
+		args[0] = cmd;
+
+		//Load args array with command line arguments
 		while(arg0 != NULL && i < 10)
 		{
-			arg0 = strtok(NULL, " \n");
-			printf("%s ", arg0);
 			args[i] = arg0;
 			i++;
+			arg0 = strtok(NULL, delim);
 		}
-		printf("\n");
-
-		int error = execvp(file, args); 
-
+		
+		//Run command with given arguments
+		int error = execvp(cmd, args); 
+		
+		//If the command wasn't run, exit with failure
 		if(error == -1)
 		{
 			exit(EXIT_FAILURE);
@@ -45,7 +49,27 @@ int runChildProc(char* arg)
 	}
 	else
 	{
+		//Print child ID, command name
+		printf("[%d] %s\n", proc, cmd);
+
+		//Wait for the child process to end
 		wait(&status);
+
+		//Catch errors from child
+		if(status == EXIT_FAILURE)
+		{
+			printf("Failed to execute\n");
+		}
+		else if(status != 0)
+		{
+			char* msg = (char*)malloc(50 * sizeof(char));
+			sprintf(msg, "Cannot execute command %s", cmd);
+			perror(msg);
+		}
+
+
+		//Print exit dialogue
+		printf("[%d] %s Exit %d\n", proc, cmd, status);
 	}
 
 	return status;
@@ -85,21 +109,7 @@ int main(int argc, char* argv[])
 		fgets(command, 50, stdin);
 		
 		//Parse command
-		/*
-		int cmdptr = 0;
-		int argptr = 0;
-		while(cmdptr < strlen(command) && command[cmdptr] != ' ' && command[cmdptr] != '\n')
-		{
-			arg[argptr] = command[cmdptr];
-			cmdptr++;
-			argptr++;
-		}
-		arg[argptr] = '\0';
-		argptr = 0;
-		*/
-		arg = strtok(command, " \n");
-
-		//printf("%s\n", arg); //DEBUG
+		arg = strtok(command, delim);
 		
 
 		//Begin command definitions...
@@ -120,20 +130,14 @@ int main(int argc, char* argv[])
 		//cd <dir>
 		else if(strcmp(arg, "cd") == 0)
 		{
-			/*
-			cmdptr++;
-			while(cmdptr < strlen(command) && command[cmdptr] != ' ' && command[cmdptr] != '\n')
-			{
-				arg[argptr] = command[cmdptr];
-				cmdptr++;
-				argptr++;
-			}
-			arg[argptr] = '\0';
-			argptr = 0;
-			*/
-
 			arg = strtok(NULL, " \n");
-			int error = chdir(arg);
+			
+
+			int error;
+			if(arg != NULL)
+				error = chdir(arg);
+			else
+				error = chdir(getenv("HOME"));
 
 			if(error == -1)
 			{
