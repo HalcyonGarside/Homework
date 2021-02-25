@@ -19,48 +19,59 @@ const char delim[4] = " \n";
 int runChildProc(char* cmd)
 {
 	int status;
-	int proc = fork();
-	if(proc == 0)
+
+	//Get the next token
+	char* arg0 = strtok(NULL, delim);
+
+	//Initialize while loop/args array
+	int i = 1, isBG = 1;
+	char* args[11];
+	args[0] = cmd;
+
+	//Load args array with command line arguments
+	while(arg0 != NULL && i < 10)
 	{
-		//Get the next token
-		char* arg0 = strtok(NULL, delim);
+		args[i] = arg0;
+		i++;
+		arg0 = strtok(NULL, delim);
+	}
 
-		//Initialize while loop/args array
-		int i = 1;
-		char* args[11];
-		args[0] = cmd;
+	//If meant to be a background process
+	if(strcmp(args[i-1], "&") == 0)
+	{
+		args[i-1] = NULL;
+		isBG = fork();
+		if(isBG != 0)
+			return 0;
+	}
 
-		//Load args array with command line arguments
-		while(arg0 != NULL && i < 10)
-		{
-			args[i] = arg0;
-			i++;
-			arg0 = strtok(NULL, delim);
-		}
-		
+
+	int proc = fork();
+
+	//If this process is going to execute the command
+	if(proc == 0)
+	{	
 		//Run command with given arguments
 		int error = execvp(cmd, args); 
 		
 		//If the command wasn't run, exit with failure
 		if(error == -1)
 		{
-			exit(EXIT_FAILURE);
+			kill(getpid(), SIGTERM);
 		}
 	}
+
+	//If this process is waiting for the command to finish executing
 	else
 	{
 		//Print child ID, command name
 		printf("[%d] %s\n", proc, cmd);
 
 		//Wait for the child process to end
-		wait(&status);
+		waitpid(proc, &status, 0);
 
 		//Catch errors from child
-		if(status == EXIT_FAILURE)
-		{
-			printf("Failed to execute\n");
-		}
-		else if(status != 0)
+		if(status != EXIT_SUCCESS)
 		{
 			char* msg = (char*)malloc(50 * sizeof(char));
 			sprintf(msg, "Cannot execute command %s", cmd);
@@ -70,6 +81,10 @@ int runChildProc(char* cmd)
 
 		//Print exit dialogue
 		printf("[%d] %s Exit %d\n", proc, cmd, status);
+		
+		//Exit w/ code 1 if background process
+		if(isBG == 0)
+			exit(1);
 	}
 
 	return status;
