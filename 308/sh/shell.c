@@ -11,12 +11,13 @@
 //#include <process_helper.h> 
 
 const char delim[4] = " \n";
+char* prompt;
 
 /*
  * Calls the system call specified by arg and returns 
  * the child process's status after it's run.
 */
-int runChildProc(char* cmd)
+int runChildProc(char* cmd, int bg)
 {
 	int status;
 
@@ -24,8 +25,9 @@ int runChildProc(char* cmd)
 	char* arg0 = strtok(NULL, delim);
 
 	//Initialize while loop/args array
-	int i = 1, isBG = 1;
+	int i = 1, bgproc = 0;
 	char* args[11];
+
 	args[0] = cmd;
 
 	//Load args array with command line arguments
@@ -36,15 +38,15 @@ int runChildProc(char* cmd)
 		arg0 = strtok(NULL, delim);
 	}
 
-	//If meant to be a background process
-	if(strcmp(args[i-1], "&") == 0)
+	//Fork into main process (id) and bg process (0)
+	if(bg == 1)
 	{
-		args[i-1] = NULL;
-		isBG = fork();
-		if(isBG != 0)
-			return 0;
+		bgproc = fork();
+		if(bgproc != 0)
+		{
+			return bgproc;
+		}
 	}
-
 
 	int proc = fork();
 
@@ -57,6 +59,9 @@ int runChildProc(char* cmd)
 		//If the command wasn't run, exit with failure
 		if(error == -1)
 		{
+			char* errstr = (char*)malloc(50 * sizeof(char));
+			sprintf(errstr, "\nCannot exec %s", cmd);
+			perror(errstr);
 			kill(getpid(), SIGTERM);
 		}
 	}
@@ -64,27 +69,17 @@ int runChildProc(char* cmd)
 	//If this process is waiting for the command to finish executing
 	else
 	{
-		//Print child ID, command name
 		printf("[%d] %s\n", proc, cmd);
 
-		//Wait for the child process to end
-		waitpid(proc, &status, 0);
+		int err = waitpid(proc, &status, 0);
 
-		//Catch errors from child
-		if(status != EXIT_SUCCESS)
+		printf("\n[%d] %s Exit (%d)\n", proc, cmd, status);
+
+		if(bg == 1)
 		{
-			char* msg = (char*)malloc(50 * sizeof(char));
-			sprintf(msg, "Cannot execute command %s", cmd);
-			perror(msg);
+			printf("%s> ", prompt);
+			kill(getpid(), SIGTERM);
 		}
-
-
-		//Print exit dialogue
-		printf("[%d] %s Exit %d\n", proc, cmd, status);
-		
-		//Exit w/ code 1 if background process
-		if(isBG == 0)
-			exit(1);
 	}
 
 	return status;
@@ -92,7 +87,7 @@ int runChildProc(char* cmd)
 
 int main(int argc, char* argv[])
 {
-	char* prompt = NULL;
+	prompt = NULL;
 	int i;
 
 	//Check for prompt name argument
@@ -115,14 +110,21 @@ int main(int argc, char* argv[])
 	//Create string for command input
 	char* command = (char*)malloc(100 * sizeof(char));
 	char* arg = (char*)malloc(50 * sizeof(char));
-
+	int bg;
 	//Main shell loop
 	while(1)
 	{
+		bg = 0;
 		//Print command line
 		printf("%s> ", prompt);
 		fgets(command, 50, stdin);
-		
+
+		if(command[strlen(command)-2] == '&')
+		{
+			bg = 1;
+			command[strlen(command)-2] = '\0';
+		}
+			
 		//Parse command
 		arg = strtok(command, delim);
 		
@@ -178,8 +180,7 @@ int main(int argc, char* argv[])
 		//Called if no other case is taken
 		else
 		{
-			runChildProc(command);
-			//printf("Cannot exec %s: No such file or directory\n", arg);
+			runChildProc(command, bg);
 			continue;
 		}
 
