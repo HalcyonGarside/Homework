@@ -37,6 +37,7 @@ int runChildProc(char* cmd, int bg)
 		i++;
 		arg0 = strtok(NULL, delim);
 	}
+	args[i] = NULL;
 
 	//Fork into main process (id) and bg process (0)
 	if(bg == 1)
@@ -44,6 +45,7 @@ int runChildProc(char* cmd, int bg)
 		bgproc = fork();
 		if(bgproc != 0)
 		{
+			usleep(1000);
 			return bgproc;
 		}
 	}
@@ -75,9 +77,10 @@ int runChildProc(char* cmd, int bg)
 
 		printf("\n[%d] %s Exit (%d)\n", proc, cmd, status);
 
-		if(bg == 1)
+		if(bg > 0)
 		{
 			printf("%s> ", prompt);
+			usleep(1000);
 			kill(getpid(), SIGTERM);
 		}
 	}
