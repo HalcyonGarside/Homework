@@ -23,6 +23,9 @@ FILE* outfile;
 //The worker threads
 pthread_t* workers;
 
+//The requests queue
+queue* requests;
+
 //delims for strtok
 const char delim[4] = " \n";
 
@@ -81,6 +84,10 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
+	//Initialize request queue
+	requests = make_queue();
+	int cur_id = 0;
+
 	//This was a test.  Ignore me until something goes arye.
 	//fprintf(outfile, "Hey ;3");
 
@@ -99,10 +106,74 @@ int main(int argc, char* argv[])
 
 		if(strcmp(tok, "CHECK") == 0)
 		{
+			int accnum = atoi(strtok(NULL, delim));
+
+			//Check for valid argument
+			if(accnum > num_accs || accnum <= 0)
+			{
+				printf("%d IS AN INVALID ACCOUNT NUMBER.\n ACCOUNT NUMBER MUST BE A NONZERO NUMBER LESS THAN OR EQUAL TO THE NUMBER OF ACCOUNTS\n", accnum);
+				continue;
+			}
+			
+			//Increment current id
+			cur_id++;
+			printf("< ID %d\n", cur_id);
+
+			//Build and add request
+			request* req = (request*)malloc(sizeof(request));
+			req->request_id = cur_id;
+			req->check_acc_id = accnum;
+			req->transfers = NULL;
+			req->num_transfers = 0;
+
+			add_req(requests, req);
 		}
 
 		else if(strcmp(tok, "TRANS") == 0)
 		{
+			//Build the array of transfers
+			transfer* transfers = (transfer*)malloc(10 * sizeof(transfer));
+			int transfer_num = 0;
+			int err = 0;
+			while(transfer_num < 10 && (tok = strtok(NULL, delim)) != NULL)
+			{
+				transfer this_trans;
+				this_trans.acc_id = atoi(tok);
+				if(this_trans.acc_id > num_accs || this_trans.acc_id <= 0)
+				{
+					printf("INVALID ACC NUMBER.  ABORTING...\n");
+					err = 1;
+					break;
+				}
+
+				if((tok = strtok(NULL, delim)) == NULL)
+				{
+					printf("UNEVEN NUMBER OF INTEGER VALUES.  ABORTING...\n");
+					err = 1;
+					break;
+				}
+				this_trans.amount = atoi(tok);
+
+				//Debug
+				//printf("Acc %d, Amt: %d", this_trans.acc_id, this_trans.amount);
+
+				transfers[transfer_num] = this_trans;
+				transfer_num++;
+			}
+			if(err > 0)
+				continue;
+
+			//Build and add request
+			cur_id++;
+			printf("< ID %d\n", cur_id);
+
+			request* req = (request*)malloc(sizeof(request));
+			req->request_id = cur_id;
+			req->check_acc_id = 0;
+			req->transfers = transfers;
+			req->num_transfers = transfer_num;
+
+			add_req(requests, req);
 		}
 
 		else if(strcmp(tok, "END") == 0)

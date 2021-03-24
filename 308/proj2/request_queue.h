@@ -6,30 +6,30 @@
  */
 
 //Queue types courtesy of the lab doc
-struct transfer
+typedef struct transfer
 {
 	int acc_id;		//account ID
 	int amount; 		//amount to be added/subtracted (depending on signage)
-};
+}transfer;
 
-struct request 
+typedef struct request 
 {
 	struct request* next;	//pointer to the next request
 	int request_id;		//this request ID
 	int check_acc_id;	//account ID for a CHECK request
-	struct transfer* transfers; //transfers for a TRANS request
+	transfer* transfers; //transfers for a TRANS request
 	int num_transfers;	//number of transfers if a TRANS request
 	struct timeval starttime, endtime; //start and end times for this request
-};
+}request;
 
-struct queue
+typedef struct queue
 {
-	struct request* head, * tail; // the head and tail of this queue
+	request* head, * tail; // the head and tail of this queue
 	int size; 		//the number of requests in this queue
-};
+}queue;
 
-struct queue* make_queue();
+queue* make_queue();
 
-int add(int id);
+int add_req(queue* q, request* req);
 
-int remove();
+request* remove_req(queue* q);
