@@ -17,6 +17,12 @@ int num_threads;
 //Number of accounts being kept track of
 int num_accs;
 
+//Sorta like bathroom passes, but for accounts!
+//(account mutexes for one-at-a-time account access)
+pthread_mutex_t* acc_passes;
+
+pthread_mutex_t q_pass;
+
 //The output file being written to
 FILE* outfile;
 
@@ -28,6 +34,9 @@ queue* requests;
 
 //delims for strtok
 const char delim[4] = " \n";
+
+//Debug string for breakpoints
+char* debg;
 
 
 /*
@@ -52,12 +61,30 @@ void capitalize(char* string);
 //The main thread function, looping.
 int main(int argc, char* argv[])
 {
+	debg = (char*)(10 * sizeof(char));
+
 	//Check correct number of program arguments
 	if(argc < 4)
 	{
 		printf("Insufficient arguments. \nTo start the server: ./appserver <# of worker threads> <# of accounts> <output file>\n");
 		return 0;
 	}
+	
+	//Initialize bank accounts
+	num_accs = atoi(argv[2]);
+	if(num_accs == 0)
+	{
+		printf("Invalid argument for number of bank accounts\n");
+		return 0;
+	}
+	initialize_accounts(num_accs);
+
+	//Initialize queue and mutexes
+	requests = make_queue();
+	acc_passes = (pthread_mutex_t*)malloc(num_accs * sizeof(pthread_mutex_t));
+	for(int i = 0; i < num_accs; i++)
+		pthread_mutex_init(&acc_passes[i], NULL);
+	pthread_mutex_init(&q_pass, NULL);
 
 	//Initialize worker threads
 	num_threads = atoi(argv[1]);
@@ -69,12 +96,9 @@ int main(int argc, char* argv[])
 	}
 	for(int i = 0; i < num_threads; i++)
 	{
+
 		pthread_create(&workers[i], NULL, worker_thread, NULL);
 	}
-
-	//Initialize bank accounts
-	num_accs = atoi(argv[2]);
-	initialize_accounts(num_accs);
 
 	//Initialize output file
 	outfile = fopen(argv[3], "w");
@@ -84,8 +108,9 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	//Initialize request queue
-	requests = make_queue();
+	//Initialize account mutexes
+	acc_passes = (pthread_mutex_t*)malloc(num_accs * sizeof(pthread_mutex_t));
+
 	int cur_id = 0;
 
 	//This was a test.  Ignore me until something goes arye.
@@ -94,6 +119,10 @@ int main(int argc, char* argv[])
 	//Initialize input and token strings
 	char* input = (char*)malloc(200 * sizeof(char));
 	char* tok = (char*)malloc(50 * sizeof(char));
+
+	//Initialize time variable
+	struct timeval time;
+
 	while(1)
 	{
 		//Grab command
@@ -119,12 +148,17 @@ int main(int argc, char* argv[])
 			cur_id++;
 			printf("< ID %d\n", cur_id);
 
+			//Get and record time
+			gettimeofday(&time, NULL);
+			//printf("%ld.%06ld\n", time.tv_sec, time.tv_usec); //DEBUGDEBUGDEBUG
+
 			//Build and add request
 			request* req = (request*)malloc(sizeof(request));
 			req->request_id = cur_id;
 			req->check_acc_id = accnum;
 			req->transfers = NULL;
 			req->num_transfers = 0;
+			req->starttime = time;
 
 			add_req(requests, req);
 		}
@@ -195,8 +229,99 @@ int main(int argc, char* argv[])
 	return 1;
 }
 
+// transfer qsort function
+int transaction_sort(const void * a, const void * b)
+{
+	return (((transfer*)a)->acc_id - ((transfer*)b)->acc_id);
+}
+
 void* worker_thread(void* args)
 {
+	request* this_req = NULL;
+	while(this_req == NULL) 
+	{
+		pthread_mutex_lock(&q_pass);
+		this_req = remove_req(requests);
+		pthread_mutex_unlock(&q_pass);
+	};
+
+	if(this_req == NULL) return 0;
+	struct timeval endt;
+
+	if(this_req->check_acc_id != 0)
+	{
+		pthread_mutex_lock(&acc_passes[this_req->check_acc_id - 1]);
+		int accbal = read_account(this_req->check_acc_id);
+		gettimeofday(&endt, NULL);
+
+		fprintf(outfile, "%d BAL %d TIME %ld.%06ld %ld.%06ld\n", this_req->request_id,
+				accbal,
+				this_req,
+				this_req->starttime.tv_sec,
+				this_req->starttime.tv_usec,
+				endt.tv_sec,
+				endt.tv_usec);
+		pthread_mutex_unlock(&acc_passes[this_req->check_acc_id - 1]);
+	}
+	else
+	{
+		//Get and sort the array of transfers
+		transfer* transfers = this_req->transfers;
+		qsort(transfers, this_req->num_transfers, sizeof(transfer), transaction_sort);
+
+		//Acquire mutexes in a fashion that does not cause a deadlock (bc qsort)
+		for(int i = 0; i < this_req->num_transfers; i++)
+		{
+			int accnum = transfers[i].acc_id;
+			pthread_mutex_lock(&acc_passes[accnum - 1]);
+		}
+
+		//Get all of the results from the transactions
+		int* results = (int*)malloc(this_req->num_transfers * sizeof(int));
+		int  bad_trans = 0;
+		for(int i = 0; i < this_req->num_transfers; i++)
+		{
+			results[i] = read_account(transfers[i].acc_id) + transfers[i].amount;
+			if(results[i] < 0)
+			{
+				bad_trans = transfers[i].acc_id;
+				break;
+			}
+		}
+		
+		//If a bad transaction was run into, say insufficient funds and return
+		if(bad_trans != 0)
+		{
+			gettimeofday(&endt, NULL);
+			fprintf(outfile, "%d ISF %d TIME %ld.%06ld %ld.%06ld\n", this_req->request_id,
+					bad_trans,
+					this_req,
+					this_req->starttime.tv_sec,
+					this_req->starttime.tv_usec,
+					endt.tv_sec,
+					endt.tv_usec);
+		}
+
+		//Otherwise, assign all of the results and say the transaction went well
+		else
+		{
+			for(int i = 0; i < this_req->num_transfers; i++)
+				write_account(transfers[i].acc_id, results[i]);
+
+			gettimeofday(&endt, NULL);
+			fprintf(outfile, "%d OK TIME %ld.%06ld %ld.%06ld\n", this_req->request_id,
+					this_req,
+					this_req->starttime.tv_sec,
+					this_req->starttime.tv_usec,
+					endt.tv_sec,
+					endt.tv_usec);
+		}
+
+		for(int i = 0; i < this_req->num_transfers; i++)
+		{
+			pthread_mutex_unlock(&acc_passes[transfers[i].acc_id - 1]);
+		}
+	}
 }
 
 void capitalize(char* string)
