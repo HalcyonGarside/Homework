@@ -1,8 +1,3 @@
-/*
- * bank_server.c
- * Author: William Blanchard
- */
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <unistd.h>
@@ -22,10 +17,8 @@ int num_threads;
 //Number of accounts being kept track of
 int num_accs;
 
-//Sorta like bathroom passes, but for accounts!
-//(account mutexes for one-at-a-time account access)
-pthread_mutex_t* acc_passes;
-
+//One large mutex for all accounts.
+pthread_mutex_t bank_pass;
 pthread_mutex_t q_pass;
 
 //The output file being written to
@@ -72,7 +65,6 @@ void capitalize(char* string);
 //The main thread function, looping.
 int main(int argc, char* argv[])
 {
-	//Initialize debug string
 	debg = (char*)(10 * sizeof(char));
 
 	//Check correct number of program arguments
@@ -94,10 +86,12 @@ int main(int argc, char* argv[])
 	//Initialize queue and mutexes
 	running = 0;
 	requests = make_queue();
-	acc_passes = (pthread_mutex_t*)malloc(num_accs * sizeof(pthread_mutex_t));
-	for(int i = 0; i < num_accs; i++)
-		pthread_mutex_init(&acc_passes[i], NULL);
+	pthread_mutex_init(&bank_pass, NULL);
 	pthread_mutex_init(&q_pass, NULL);
+
+	//running = (pthread_cond_t*)malloc(num_accs * sizeof(pthread_cond_t));
+	//for(int i = 0; i < num_accs; i++)
+	//	pthread_cond_init(&running[i], NULL);
 
 	//Initialize worker threads
 	num_threads = atoi(argv[1]);
@@ -121,10 +115,6 @@ int main(int argc, char* argv[])
 		return 0;
 	}
 
-	//Initialize account mutexes
-	//acc_passes = (pthread_mutex_t*)malloc(num_accs * sizeof(pthread_mutex_t));
-
-	//Initialize ID counter
 	int cur_id = 0;
 
 	//This was a test.  Ignore me until something goes arye.
@@ -147,7 +137,6 @@ int main(int argc, char* argv[])
 		tok = strtok(input, delim);
 		capitalize(tok);
 
-		//If the request is to check an account
 		if(strcmp(tok, "CHECK") == 0)
 		{
 			int accnum = atoi(strtok(NULL, delim));
@@ -175,12 +164,11 @@ int main(int argc, char* argv[])
 			req->num_transfers = 0;
 			clock_gettime(CLOCK_REALTIME, &tm);
 			req->starttime = tm;
+			//req->endtime = etime;
 
 			add_req(requests, req);
-			running++;
 		}
-		
-		//If the request was to transfer money
+
 		else if(strcmp(tok, "TRANS") == 0)
 		{
 			//Build the array of transfers
@@ -189,27 +177,21 @@ int main(int argc, char* argv[])
 			int err = 0;
 			while(transfer_num < 10 && (tok = strtok(NULL, delim)) != NULL)
 			{
-				//Get the account id
 				transfer this_trans;
 				this_trans.acc_id = atoi(tok);
-
-				//If the account number is invalid, throw an error
 				if(this_trans.acc_id > num_accs || this_trans.acc_id <= 0)
 				{
 					printf("INVALID ACC NUMBER.  ABORTING...\n");
 					err = 1;
 					break;
 				}
-				
-				//If the number of numbers in the request is not even (all ops should be in pairs), throw an error
+
 				if((tok = strtok(NULL, delim)) == NULL)
 				{
 					printf("UNEVEN NUMBER OF INTEGER VALUES.  ABORTING...\n");
 					err = 1;
 					break;
 				}
-				
-				//If all succeeds, associate this amount with this transfer and add it to the transfers array
 				this_trans.amount = atoi(tok);
 
 				//Debug
@@ -218,7 +200,6 @@ int main(int argc, char* argv[])
 				transfers[transfer_num] = this_trans;
 				transfer_num++;
 			}
-			//Don't make the request if there was an error
 			if(err > 0)
 				continue;
 
@@ -235,17 +216,13 @@ int main(int argc, char* argv[])
 			req->starttime = tm;
 
 			add_req(requests, req);
-
-			running++;
 		}
 
 		else if(strcmp(tok, "END") == 0)
 		{
 			printf("Ending process...\n");
-		//	printf("%d\n", running);
 			while(running > 0)
 			{
-		//		printf("%d\n", running);
 			}
 			printf("Process ended. \n");
 			break;
@@ -271,44 +248,36 @@ int transaction_sort(const void * a, const void * b)
 
 void* worker_thread(void* args)
 {
-	//Initialize thread variables
 	int loop;
-	//running++;
+	running++;
 	request* this_req = NULL;
-
 	while(1)
 	{
 		loop = 0;
-
-		//While a request hasn't been acquired yet
 		while(this_req == NULL) 
 		{
-			//Acquire the queue pass and grab a request if one's available
 			pthread_mutex_lock(&q_pass);
 			this_req = remove_req(requests);
 			pthread_mutex_unlock(&q_pass);
-
-			//If the loop hasn't looped yet and there isn't another request, the thread isn't running
-			//if(this_req == NULL && loop == 0)
-			//{
-			//	running--;
-			//	loop = 1;
-			//	printf("%d\n", running);
-			//}
-		}
+			if(this_req == NULL && loop == 0)
+			{
+				running--;
+				loop = 1;
+			}
+		};
 		
-		//If the while loop looped, the running count lowered, so increase it again
-		//if(loop == 1)
-			//running++;
-		
-		//If somehow the request is null, bypass all operations
+		if(loop == 1)
+			running++;
+	
+	
+		//printf("Working on request no. %d\n", this_req->request_id);
+	
 		if(this_req == NULL) continue;
-		
-		//If we are checking an account's balance
+
+		pthread_mutex_lock(&bank_pass);
+	
 		if(this_req->check_acc_id != 0)
 		{
-			//Lock account mutex, get the balance and current time, then unlock the mutex
-			pthread_mutex_lock(&acc_passes[this_req->check_acc_id - 1]);
 			int accbal = read_account(this_req->check_acc_id);
 			clock_gettime(CLOCK_REALTIME, &tm);
 			this_req->endtime = tm;
@@ -319,22 +288,12 @@ void* worker_thread(void* args)
 					this_req->starttime.tv_nsec / 1000,
 					this_req->endtime.tv_sec,
 					this_req->endtime.tv_nsec / 1000);
-			pthread_mutex_unlock(&acc_passes[this_req->check_acc_id - 1]);
-			
 		}
-		//If we are making a transfer
 		else
 		{
-			//Acquire all transfers and sort them according to account id
+			//Get and sort the array of transfers
 			transfer* transfers = this_req->transfers;
 			qsort(transfers, this_req->num_transfers, sizeof(transfer), transaction_sort);
-			
-			//Lock all needed mutexes	
-			for(int i = 0; i < this_req->num_transfers; i++)
-			{
-				int accnum = transfers[i].acc_id;
-				pthread_mutex_lock(&acc_passes[accnum - 1]);
-			}
 	
 			//Get all of the results from the transactions
 			int* results = (int*)malloc(this_req->num_transfers * sizeof(int));
@@ -376,15 +335,10 @@ void* worker_thread(void* args)
 						this_req->endtime.tv_sec,
 						this_req->endtime.tv_nsec / 1000);
 			}
-
-			//Unlock all mutexes associated with this transfer	
-			for(int i = 0; i < this_req->num_transfers; i++)
-			{
-				pthread_mutex_unlock(&acc_passes[transfers[i].acc_id - 1]);
-			}
 		}
 
-		running--;
+		pthread_mutex_unlock(&bank_pass);
+
 		this_req = NULL;
 	}
 }

@@ -19,7 +19,7 @@ typedef struct request
 	int check_acc_id;	//account ID for a CHECK request
 	transfer* transfers; //transfers for a TRANS request
 	int num_transfers;	//number of transfers if a TRANS request
-	struct timeval starttime, endtime; //start and end times for this request
+	struct timespec starttime, endtime; //start and end times for this request
 }request;
 
 typedef struct queue

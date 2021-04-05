@@ -1,5 +1,6 @@
 bank_server : bank request_queue
 	gcc -o bank_server.o bank_server.c Bank.o request_queue.o -lpthread
+	gcc -o bank_server_coarse.o bank_server_coarse.c Bank.o request_queue.o -lpthread
 
 bank : Bank.c Bank.h
 	gcc Bank.c -c
