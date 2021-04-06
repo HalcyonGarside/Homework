@@ -165,8 +165,10 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_REALTIME, &tm);
 			req->starttime = tm;
 			//req->endtime = etime;
-
+			
+			pthread_mutex_lock(&q_pass);
 			add_req(requests, req);
+			pthread_mutex_unlock(&q_pass);
 		}
 
 		else if(strcmp(tok, "TRANS") == 0)
@@ -215,7 +217,9 @@ int main(int argc, char* argv[])
 			clock_gettime(CLOCK_REALTIME, &tm);
 			req->starttime = tm;
 
+			pthread_mutex_lock(&q_pass);
 			add_req(requests, req);
+			pthread_mutex_unlock(&q_pass);
 		}
 
 		else if(strcmp(tok, "END") == 0)

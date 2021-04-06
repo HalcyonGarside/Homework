@@ -19,7 +19,7 @@ int num_accs;
 
 //Sorta like bathroom passes, but for accounts!
 //(account mutexes for one-at-a-time account access)
-pthread_mutex_t* acc_pass;
+pthread_mutex_t* acc_passes;
 pthread_mutex_t q_pass;
 
 //The output file being written to
@@ -92,10 +92,6 @@ int main(int argc, char* argv[])
 		pthread_mutex_init(&acc_passes[i], NULL);
 	pthread_mutex_init(&q_pass, NULL);
 
-	//running = (pthread_cond_t*)malloc(num_accs * sizeof(pthread_cond_t));
-	//for(int i = 0; i < num_accs; i++)
-	//	pthread_cond_init(&running[i], NULL);
-
 	//Initialize worker threads
 	num_threads = atoi(argv[1]);
 	workers = (pthread_t*)malloc(num_threads * sizeof(pthread_t));
@@ -155,10 +151,6 @@ int main(int argc, char* argv[])
 			cur_id++;
 			printf("< ID %d\n", cur_id);
 
-			//Get and record time
-			//gettimeofday(&stime, NULL);
-			//printf("%ld.%06ld\n", time.tv_sec, time.tv_usec); //DEBUGDEBUGDEBUG
-
 			//Build and add request
 			request* req = (request*)malloc(sizeof(request));
 			req->request_id = cur_id;
@@ -167,9 +159,10 @@ int main(int argc, char* argv[])
 			req->num_transfers = 0;
 			clock_gettime(CLOCK_REALTIME, &tm);
 			req->starttime = tm;
-			//req->endtime = etime;
-
+			
+			pthread_mutex_lock(&q_pass);
 			add_req(requests, req);
+			pthread_mutex_unlock(&q_pass);
 		}
 
 		else if(strcmp(tok, "TRANS") == 0)
@@ -197,9 +190,6 @@ int main(int argc, char* argv[])
 				}
 				this_trans.amount = atoi(tok);
 
-				//Debug
-				//printf("Acc %d, Amt: %d", this_trans.acc_id, this_trans.amount);
-
 				transfers[transfer_num] = this_trans;
 				transfer_num++;
 			}
@@ -217,17 +207,19 @@ int main(int argc, char* argv[])
 			req->num_transfers = transfer_num;
 			clock_gettime(CLOCK_REALTIME, &tm);
 			req->starttime = tm;
-
+			
+			//Lock mutex for no weird queue edge cases		
+			pthread_mutex_lock(&q_pass);
 			add_req(requests, req);
+			pthread_mutex_unlock(&q_pass);
 		}
 
 		else if(strcmp(tok, "END") == 0)
 		{
-			printf("Ending process...\n");
-			while(running > 0)
+			//Wait for threads to stop running and requests queue to be empty
+			while(running > 0 || requests->size > 0)
 			{
 			}
-			printf("Process ended. \n");
 			break;
 		}
 
@@ -257,6 +249,8 @@ void* worker_thread(void* args)
 	while(1)
 	{
 		loop = 0;
+
+		//Wait for a request to use
 		while(this_req == NULL) 
 		{
 			pthread_mutex_lock(&q_pass);
@@ -269,14 +263,13 @@ void* worker_thread(void* args)
 			}
 		};
 		
+		//If the loop had been run through at least one, increment running		
 		if(loop == 1)
 			running++;
 	
-	
-		//printf("Working on request no. %d\n", this_req->request_id);
-	
 		if(this_req == NULL) continue;
-
+		
+		//If the request is a check request
 		if(this_req->check_acc_id != 0)
 		{
 			pthread_mutex_lock(&acc_passes[this_req->check_acc_id - 1]);
@@ -292,6 +285,7 @@ void* worker_thread(void* args)
 					this_req->endtime.tv_nsec / 1000);
 			pthread_mutex_unlock(&acc_passes[this_req->check_acc_id - 1]);
 		}
+		//Otherwise, if it's a transaction request
 		else
 		{
 			//Get and sort the array of transfers
