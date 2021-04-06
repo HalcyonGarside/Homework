@@ -320,9 +320,15 @@ int PRAlgo_OPT(const PageFrame * PageFrames, int num_frames, const int * PageAcc
 	for(int pg = 0; pg < num_frames; pg++)
 	{
 		PageFrame cur_frame = PageFrames[pg];
-		for(int i = current_access + 1; i < num_accesses; i++)
+		for(int i = current_access + 1; i < num_accesses + 1; i++)
 		{
 			int cur_access = PageAccesses[i];
+			if(i == num_accesses)
+			{
+				latest_time = num_accesses;
+				frame_to_evict = pg;
+				break;
+			}
 			if(cur_frame.page_id == cur_access)
 			{
 				if(i > latest_time)
@@ -333,6 +339,9 @@ int PRAlgo_OPT(const PageFrame * PageFrames, int num_frames, const int * PageAcc
 				break;
 			}
 		}
+
+		if(latest_time == num_accesses)
+			break;
 	}
 
 	return frame_to_evict;
