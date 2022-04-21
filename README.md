@@ -10,5 +10,9 @@
   
 **ComS_228_IntroToDataStructs**
  This is a class I am currently taking delving further into Java, focusing more on data structures.  The homework given is much more loose, meaning the assignments given are based off of a few pre-made interfaces and a document specifying what needs to be done to finish the assignment.  We were introduced to generic types in the course of the first assignment.  This directory is currently in development, since the class is still running, but this description will be finalized once it is said and done.
+
+**CprE_308_OperatingSystems**
+
+**CprE_575_ComputationalPerception**
   
   I will be consistantly updating this list as more difficult assignments come to me.  If you want more information on my work, contact me at wil.s.blanchard@gmail.com.
