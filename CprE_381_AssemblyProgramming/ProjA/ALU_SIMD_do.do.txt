@@ -1,0 +1,8 @@
+vsim work.alu_simd
+add wave -position insertpoint sim:/alu_simd/*
+
+force -freeze sim:/alu_simd/i_CTL 000 0
+force -freeze sim:/alu_simd/i_Rs 00000001000000010000000100000001 0
+force -freeze sim:/alu_simd/i_Rt 00000001000000010000000100000001 0
+force -freeze sim:/alu_simd/i_Imm 01010101 0
+run 100

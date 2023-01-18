@@ -1,0 +1,23 @@
+library IEEE;
+use IEEE.std_logic_1164.all;
+use work.reg_file_regs.all;
+
+entity ALU_BYTE is
+	port(i_Rs 	: in std_logic_vector(7 downto 0);
+	     i_Rt 	: in std_logic_vector(7 downto 0);
+		 i_Imm	: in std_logic_vector(7 downto 0);
+		 i_CTL	: in std_logic_vector(2 downto 0);
+		 o_F 	: out std_logic_vector(7 downto 0)
+	);
+end ALU_BYTE;
+
+-- 000 Rs + Rt
+-- 001 Unsigned Rs + Rt w/ Saturation
+-- 010 Unsigned subtraction w/o Saturation
+-- 011 Output i_Rs
+-- 100 |Rs| Absolute Value
+-- 101 Output i_Rs 
+-- 110 Output i_Imm
+-- 111 Returns 0
+
+architecture s_ALU_BYTE of ALU_BYTE is
